@@ -10,6 +10,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.common.keys import Keys
 
+# Error handling.
+from selenium.common.exceptions import WebDriverException
+
 # Fake agent module
 from fake_useragent import UserAgent
 
@@ -28,13 +31,8 @@ MIN_MINUTE_TIME = 0
 MAX_HOUR_TIME = 12
 MIN_HOUR_TIME = 7
 
-# Used for the implicitly_wait function. Delay the time of responses.
+# Delay the time of responses in seconds.
 DELAY_TIME = 1
-
-# ID's for specific question.
-GENDER_ID = "R000037"
-AGE_ID = "R000038"
-HOUSE_HOLD_INCOME_ID = "R000039"
 
 def setup_selenium():
     global driver
@@ -49,12 +47,20 @@ def setup_selenium():
     # Generate a random user agent.
     ua = UserAgent(verify_ssl=False)
     user_agent = ua.random
-    print("Using FAKE user agent: " + "\n" + user_agent)
-    options.add_argument("user-agent=" + user_agent)
+    print(f"User agent: {user_agent}")
+    options.add_argument(f"user-agent={user_agent}")
         
     # Locate the path to the chrome driver and run it.
     chrome_service = ChromeService(executable_path=CHROME_DRIVER_PATH)
-    driver = webdriver.Chrome(service=chrome_service, options=options)
+
+    try: 
+        # Get the chrome binary to run the chrome driver.
+        driver = webdriver.Chrome(service=chrome_service, options=options)
+    except WebDriverException:
+        print("Error: Cannot find Chrome binary.")
+        print("Exiting program.")
+        exit(1)
+
     print("Selenium loaded.")
     
     # Get the survey page.
@@ -84,7 +90,6 @@ def information_from_receipt():
     # Complete the introduction.
     driver.find_element(By.ID, "NextButton").click()
 
-
 def fill_out_survey():
     print("Filling out survey...")
     
@@ -93,11 +98,9 @@ def fill_out_survey():
     next_button = driver.find_element(By.ID, "NextButton") 
     next_button.click()
     
-    
     next_button = driver.find_elements(By.ID, "NextButton")
-    while len(next_button) > 0: 
-        xpath_expression = ""
 
+    while len(next_button) > 0: 
         # Select the multiple choice questions.
         multiple_choice = driver.find_elements(By.CLASS_NAME, "radioSimpleInput")
 
@@ -116,56 +119,52 @@ def fill_out_survey():
         # Question that ask the customer yes or no questions.
         yes_no_table = driver.find_elements(By.CLASS_NAME, "YesNoASCQuestion")
 
-        # Select the best option on the table questions (highly satifised).
+        # Select the best option on the table questions (highly satisfied).
         xpath_expression = '//td[@class="HighlySatisfiedNeitherDESCQuestion" or "HighlyLikelyDESCQuestion"]' 
 
         # Check if the highly satisfied table exist.
         best_option_table = driver.find_elements(By.XPATH, xpath_expression)
-      
-        # Options that need specific answers.
+        
+        # Did a staff member go above and beyond?
+        above_and_beyond_question = driver.find_elements(By.ID, "FNSR000041")
+        
+        # Respond to the conditions.
         if experience:
-            multiple_choice[1].click() 
+            handle_experience_question(multiple_choice)
         elif employee:
-            employee[0].click()
+            handle_employee_question(employee)
         elif dine_in:
-            dine_in[0].click() 
+            handle_dine_in_question(dine_in)
         elif text_area:
-            try:
-                text_area = text_area[0] 
-                text_area.send_keys(Keys.TAB)
-                text_area.clear()
-                text_area.send_keys(r.choice(list(open('good_comments.txt'))))
-            except FileNotFoundError:
-                print("[ERROR] File not found. Skipping writing a comment.") 
+            handle_text_area_question(text_area)
+        elif above_and_beyond_question:
+            handle_above_and_beyond_question()
+            break 
         elif yes_no_table:
-            xpath_expression = "//td[@class='Opt1 inputtyperbloption']//span[@class='radioSimpleInput']" 
-            best_option = driver.find_elements(By.XPATH, xpath_expression)
-            for i in range(len(best_option)):
-                best_option[i].click() 
+            handle_yes_no_table_question()
         elif best_option_table:
-            # If the highly satisfied table exist, choose the best option.
-            xpath_expression = "//td[@class='Opt5 inputtyperbloption']//span[@class='radioSimpleInput']" 
-            best_option = driver.find_elements(By.XPATH, xpath_expression)
-            for i in range(len(best_option)):
-                best_option[i].click()
+            handle_best_option_table_question()
         else:
-            # If does not meet any creteria above choose a random option.
+            # If does not meet any criteria above choose a random option.
             multiple_choice[r.randint(0, len(multiple_choice))-1].click()
                         
         # Click the next button.
         next_button = driver.find_elements(By.ID, "NextButton")
 
-        # Reached the end page where you choose question.
-        fill_out_data = driver.find_elements(By.ID, "FNSBlock1200")
-        if len(fill_out_data) > 0:
-            break
-
         # Proceed to the next page. 
         next_button[0].click()
-        
-    # Select a randomized attributes of a person.
-    randomize_person_option()
 
+# Helper functions 
+def handle_experience_question(multiple_choice):
+    multiple_choice[1].click()
+
+def handle_employee_question(employee):
+    employee[0].click()
+
+def handle_dine_in_question(dine_in):
+    dine_in[0].click()
+
+def handle_above_and_beyond_question():
     # No employee went above and beyond.
     multiple_choice = driver.find_elements(By.CLASS_NAME, "radioSimpleInput")
     multiple_choice[1].click()
@@ -175,20 +174,27 @@ def fill_out_survey():
     multiple_choice = driver.find_elements(By.CLASS_NAME, "radioSimpleInput")
     multiple_choice[1].click()
     driver.find_element(By.ID, "NextButton").click()
-        
-        
-def randomize_person_option():
-    print("Randomizing person options...")
-    
-    # Randomize the person's gender.
-    Select(driver.find_element(By.ID, GENDER_ID)).select_by_value(str(r.randint(1,2)))   
-    
-    # Randomize the person's age.
-    Select(driver.find_element(By.ID, AGE_ID)).select_by_value(str(r.randint(2,6))) 
-    
-    # Randomize the person's house hold income.
-    Select(driver.find_element(By.ID, HOUSE_HOLD_INCOME_ID)).select_by_value(str(r.randint(1,6))) 
-        
+
+def handle_text_area_question(text_area):
+    if os.path.isfile("good_comments.txt"):
+        text_area = text_area[0]
+        text_area.send_keys(Keys.TAB)
+        text_area.clear()
+        text_area.send_keys(r.choice(list(open("good_comments.txt"))))
+    else:
+        print("[ERROR] File not found. Skipping writing a comment.")
+
+def handle_yes_no_table_question():
+    xpath_expression = "//td[@class='Opt1 inputtyperbloption']//span[@class='radioSimpleInput']"
+    best_option = driver.find_elements(By.XPATH, xpath_expression)
+    for i in range(len(best_option)):
+        best_option[i].click()
+
+def handle_best_option_table_question():
+    xpath_expression = "//td[@class='Opt5 inputtyperbloption']//span[@class='radioSimpleInput']"
+    best_option = driver.find_elements(By.XPATH, xpath_expression)
+    for i in range(len(best_option)):
+        best_option[i].click()
     
 def save_validation_code(): 
     print("Saving validation code...")
@@ -196,7 +202,6 @@ def save_validation_code():
     valid_code = driver.find_elements(By.CLASS_NAME, "ValCode")[0] 
     with open('validation_code.txt', 'a') as f:
         f.write(str(valid_code.get_attribute("textContent")) + "\n")
-    
 
 def main():
     setup_selenium()
@@ -208,5 +213,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
     
