@@ -1,5 +1,3 @@
-![Logo](https://i.ibb.co/Qvtd7bf/wendy-64x64.png)
-
 # Wendy Survey Automation
 
 This script automates the survey process of any Wendy store of your choice and boost up the survey ratings.
